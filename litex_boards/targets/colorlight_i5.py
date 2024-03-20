@@ -105,6 +105,7 @@ class BaseSoC(SoCCore):
         sdram_rate             = "1:1",
         with_video_terminal    = False,
         with_video_framebuffer = False,
+        with_video_colorbars   = False,
         **kwargs):
         board = board.lower()
         assert board in ["i5", "i9"]
@@ -112,7 +113,7 @@ class BaseSoC(SoCCore):
 
         # CRG --------------------------------------------------------------------------------------
         with_usb_pll   = kwargs.get("uart_name", None) == "usb_acm"
-        with_video_pll = with_video_terminal or with_video_framebuffer
+        with_video_pll = with_video_terminal or with_video_framebuffer or with_video_colorbars
         self.crg = _CRG(platform, sys_clk_freq,
             use_internal_osc = use_internal_osc,
             with_usb_pll     = with_usb_pll,
@@ -173,12 +174,14 @@ class BaseSoC(SoCCore):
             self.add_constant("REMOTEIP4", int(remote_ip[3]))
 
         # Video ------------------------------------------------------------------------------------
-        if with_video_terminal or with_video_framebuffer:
+        if with_video_terminal or with_video_framebuffer or with_video_colorbars:
             self.videophy = VideoHDMIPHY(platform.request("gpdi"), clock_domain="hdmi")
             if with_video_terminal:
                 self.add_video_terminal(phy=self.videophy, timings="800x600@60Hz", clock_domain="hdmi")
             if with_video_framebuffer:
                 self.add_video_framebuffer(phy=self.videophy, timings="800x600@60Hz", clock_domain="hdmi")
+            if with_video_colorbars:
+                self.add_video_colorbars(phy=self.videophy, timings="800x600@60Hz", clock_domain="hdmi")
 
 # Build --------------------------------------------------------------------------------------------
 
@@ -202,6 +205,7 @@ def main():
     viopts = parser.target_group.add_mutually_exclusive_group()
     viopts.add_argument("--with-video-terminal",    action="store_true", help="Enable Video Terminal (HDMI).")
     viopts.add_argument("--with-video-framebuffer", action="store_true", help="Enable Video Framebuffer (HDMI).")
+    viopts.add_argument("--with-video-colorbars",   action="store_true", help="Enable Video Colorbars (HDMI).")
     args = parser.parse_args()
 
     soc = BaseSoC(board=args.board, revision=args.revision,
@@ -216,6 +220,7 @@ def main():
         sdram_rate             = args.sdram_rate,
         with_video_terminal    = args.with_video_terminal,
         with_video_framebuffer = args.with_video_framebuffer,
+        with_video_colorbars   = args.with_video_colorbars,
         **parser.soc_argdict
     )
     soc.platform.add_extension(colorlight_i5._sdcard_pmod_io)
