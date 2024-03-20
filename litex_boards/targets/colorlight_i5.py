@@ -18,6 +18,7 @@ from litex.soc.cores.clock import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 from litex.soc.cores.video import VideoHDMIPHY
+from litex.soc.cores.video import video_timings
 from litex.soc.cores.led import LedChaser
 
 from litex.soc.interconnect.csr import *
@@ -30,7 +31,7 @@ from liteeth.phy.ecp5rgmii import LiteEthPHYRGMII
 # CRG ----------------------------------------------------------------------------------------------
 
 class _CRG(LiteXModule):
-    def __init__(self, platform, sys_clk_freq, use_internal_osc=False, with_usb_pll=False, with_video_pll=False, sdram_rate="1:1"):
+    def __init__(self, platform, sys_clk_freq, use_internal_osc=False, with_usb_pll=False, with_video_pll=False, sdram_rate="1:1", pix_clk=40e6):
         self.rst    = Signal()
         self.cd_sys = ClockDomain()
         if sdram_rate == "1:2":
@@ -84,8 +85,8 @@ class _CRG(LiteXModule):
             video_pll.register_clkin(clk, clk_freq)
             self.cd_hdmi   = ClockDomain()
             self.cd_hdmi5x = ClockDomain()
-            video_pll.create_clkout(self.cd_hdmi,    40e6, margin=0)
-            video_pll.create_clkout(self.cd_hdmi5x, 200e6, margin=0)
+            video_pll.create_clkout(self.cd_hdmi, pix_clk, margin=0)
+            video_pll.create_clkout(self.cd_hdmi5x, 5*pix_clk, margin=0)
 
         # SDRAM clock
         sdram_clk = ClockSignal("sys2x_ps" if sdram_rate == "1:2" else "sys_ps")
@@ -106,6 +107,7 @@ class BaseSoC(SoCCore):
         with_video_terminal    = False,
         with_video_framebuffer = False,
         with_video_colorbars   = False,
+        video_timing           = "800x600@60Hz",
         **kwargs):
         board = board.lower()
         assert board in ["i5", "i9"]
@@ -118,7 +120,8 @@ class BaseSoC(SoCCore):
             use_internal_osc = use_internal_osc,
             with_usb_pll     = with_usb_pll,
             with_video_pll   = with_video_pll,
-            sdram_rate       = sdram_rate
+            sdram_rate       = sdram_rate,
+            pix_clk          = video_timings[video_timing]["pix_clk"]
         )
 
         # SoCCore ----------------------------------------------------------------------------------
@@ -177,11 +180,11 @@ class BaseSoC(SoCCore):
         if with_video_terminal or with_video_framebuffer or with_video_colorbars:
             self.videophy = VideoHDMIPHY(platform.request("gpdi"), clock_domain="hdmi")
             if with_video_terminal:
-                self.add_video_terminal(phy=self.videophy, timings="800x600@60Hz", clock_domain="hdmi")
+                self.add_video_terminal(phy=self.videophy, timings=video_timing, clock_domain="hdmi")
             if with_video_framebuffer:
-                self.add_video_framebuffer(phy=self.videophy, timings="800x600@60Hz", clock_domain="hdmi")
+                self.add_video_framebuffer(phy=self.videophy, timings=video_timing, clock_domain="hdmi")
             if with_video_colorbars:
-                self.add_video_colorbars(phy=self.videophy, timings="800x600@60Hz", clock_domain="hdmi")
+                self.add_video_colorbars(phy=self.videophy, timings=video_timing, clock_domain="hdmi")
 
 # Build --------------------------------------------------------------------------------------------
 
@@ -206,6 +209,7 @@ def main():
     viopts.add_argument("--with-video-terminal",    action="store_true", help="Enable Video Terminal (HDMI).")
     viopts.add_argument("--with-video-framebuffer", action="store_true", help="Enable Video Framebuffer (HDMI).")
     viopts.add_argument("--with-video-colorbars",   action="store_true", help="Enable Video Colorbars (HDMI).")
+    parser.add_target_argument("--video-timing", default="800x600@60Hz", help="Video timing (800x600@60Hz).")
     args = parser.parse_args()
 
     soc = BaseSoC(board=args.board, revision=args.revision,
@@ -221,6 +225,7 @@ def main():
         with_video_terminal    = args.with_video_terminal,
         with_video_framebuffer = args.with_video_framebuffer,
         with_video_colorbars   = args.with_video_colorbars,
+        video_timing           = args.video_timing,
         **parser.soc_argdict
     )
     soc.platform.add_extension(colorlight_i5._sdcard_pmod_io)
